@@ -26,11 +26,13 @@ import android.os.Bundle;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
+import android.widget.AdapterView;
 import android.widget.TextView;
 import android.widget.ImageView;
 import android.content.SharedPreferences;
 
 import org.nerdcircus.android.klaxon.Pager;
+import org.nerdcircus.android.klaxon.Pager.Pages;
 import org.nerdcircus.android.klaxon.Pager.Replies;
 
 import android.util.Log;
@@ -39,6 +41,8 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.Arrays;
 import java.util.Date;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.text.SimpleDateFormat;
 
 public class PageViewer extends Activity
@@ -100,19 +104,45 @@ public class PageViewer extends Activity
     public boolean onCreateOptionsMenu(Menu menu) {
         super.onCreateOptionsMenu(menu);
 
-        Cursor c = managedQuery(Replies.CONTENT_URI,  
-                    new String[] {Replies._ID, Replies.NAME, Replies.BODY, Replies.ACK_STATUS},
-                    "show_in_menu == 1", null, null);
-        c.moveToFirst();
-        while ( ! c.isAfterLast() ){
-            addReplyMenuItem(menu,
-                             c.getString(c.getColumnIndex(Replies.NAME)),
-                             c.getString(c.getColumnIndex(Replies.BODY)),
-                             c.getInt(c.getColumnIndex(Replies.ACK_STATUS))
-                             );
-            c.moveToNext();
+        // BEGIN ADRAKE PAGERDUTY HAX
+        // Find PagerDuty messages
+        boolean pagerDuty = false;
+        String itemBody = mCursor.getString(mCursor.getColumnIndex(Pager.Pages.BODY));
+        // Ack
+        Matcher ackMatcher = Pattern.compile(" ([0-9]+):Ack").matcher(itemBody);
+        if (ackMatcher.find()) {
+        	addReplyMenuItem(menu, "Ack", ackMatcher.group(1), Pager.STATUS_ACK);
+        	pagerDuty = true;
         }
-        menu.add(Menu.NONE, Menu.NONE, Menu.NONE, R.string.other);
+        // Resolve
+        Matcher resolveMatcher = Pattern.compile(" ([0-9]+):Resolv").matcher(itemBody);
+        if (resolveMatcher.find()) {
+        	addReplyMenuItem(menu, "Resolve", resolveMatcher.group(1), Pager.STATUS_ACK);
+        	pagerDuty = true;
+        }
+        // Escalate
+        Matcher escalateMatcher = Pattern.compile(" ([0-9]+):Escal8").matcher(itemBody);
+        if (escalateMatcher.find()) {
+        	addReplyMenuItem(menu, "Escalate", escalateMatcher.group(1), Pager.STATUS_NACK);
+        	pagerDuty = true;
+        }
+        // Not a PagerDuty message
+        if (!pagerDuty) {
+	        Cursor c = managedQuery(Replies.CONTENT_URI,  
+	                    new String[] {Replies._ID, Replies.NAME, Replies.BODY, Replies.ACK_STATUS},
+	                    "show_in_menu == 1", null, null);
+	        c.moveToFirst();
+	        while ( ! c.isAfterLast() ){
+	            addReplyMenuItem(menu,
+	                             c.getString(c.getColumnIndex(Replies.NAME)),
+	                             c.getString(c.getColumnIndex(Replies.BODY)),
+	                             c.getInt(c.getColumnIndex(Replies.ACK_STATUS))
+	                             );
+	            c.moveToNext();
+	        }
+	        menu.add(Menu.NONE, Menu.NONE, Menu.NONE, R.string.other);
+        }
+        // END ADRAKE PAGERDUTY HAX
         //make delete be last
         MenuItem delete_item = menu.add(Menu.NONE, Menu.NONE, Menu.NONE, R.string.delete);
 

@@ -16,6 +16,9 @@
 
 package org.nerdcircus.android.klaxon;
 
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.AlarmManager;
@@ -29,6 +32,7 @@ import android.content.res.Resources;
 import android.database.Cursor;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.PatternMatcher;
 import android.view.ContextMenu;
 import android.view.Menu;
 import android.view.MenuItem;
@@ -193,32 +197,63 @@ public class KlaxonList extends ListActivity
     public void onCreateContextMenu(ContextMenu menu, View v, ContextMenu.ContextMenuInfo menuInfo) {
         Log.d(TAG, "Menu info position: " + ((AdapterView.AdapterContextMenuInfo)menuInfo).position);
 
-        Cursor c = managedQuery(Replies.CONTENT_URI,  
-                    new String[] {Replies._ID, Replies.NAME, Replies.BODY, Replies.ACK_STATUS},
-                    "show_in_menu == 1", null, null);
-        c.moveToFirst();
-        while ( ! c.isAfterLast() ){
-            MenuItem mi = addContextMenuItem(menu,
-                             c.getString(c.getColumnIndex(Replies.NAME)),
-                             c.getString(c.getColumnIndex(Replies.BODY)),
-                             c.getInt(c.getColumnIndex(Replies.ACK_STATUS)),
-                             getListAdapter().getItemId(((AdapterView.AdapterContextMenuInfo)menuInfo).position)
-                             );
-            c.moveToNext();
+        // BEGIN ADRAKE PAGERDUTY HAX
+        // Find PagerDuty response codes
+        boolean pagerDuty = false;
+        long itemId = getListAdapter().getItemId(((AdapterView.AdapterContextMenuInfo)menuInfo).position);
+        Uri itemUri = Uri.withAppendedPath(Pages.CONTENT_URI, ""+itemId);
+        Cursor itemCursor = getContentResolver().query(itemUri, new String[] { Pager.Pages.BODY }, null, null, null);
+        itemCursor.moveToNext();
+        String itemBody = itemCursor.getString(itemCursor.getColumnIndex(Pager.Pages.BODY));
+        // Ack
+        Matcher ackMatcher = Pattern.compile(" ([0-9]+):Ack").matcher(itemBody);
+        if (ackMatcher.find()) {
+        	addContextMenuItem(menu, "Ack", ackMatcher.group(1), Pager.STATUS_ACK, itemId);
+        	pagerDuty = true;
         }
-        // Add the "Other" menu option.
-        menu.add(MENU_ACTIONS_GROUP, Menu.NONE, Menu.NONE, R.string.other).setOnMenuItemClickListener(
-            new MenuItem.OnMenuItemClickListener(){
-                public boolean onMenuItemClick(MenuItem item){
-                    Intent i = new Intent(Intent.ACTION_PICK, Replies.CONTENT_URI);
-                    i.setType("vnd.android.cursor.item/reply");
-                    long itemId = getListAdapter().getItemId(((AdapterView.AdapterContextMenuInfo)item.getMenuInfo()).position);
-                    i.putExtra("page_uri", Uri.withAppendedPath(Pages.CONTENT_URI, ""+itemId).toString() );
-                    startActivityForResult(i, REQUEST_PICK_REPLY);
-                    return true;
-                }
-            }
-        );
+        // Resolve
+        Matcher resolveMatcher = Pattern.compile(" ([0-9]+):Resolv").matcher(itemBody);
+        if (resolveMatcher.find()) {
+        	addContextMenuItem(menu, "Resolve", resolveMatcher.group(1), Pager.STATUS_ACK, itemId);
+        	pagerDuty = true;
+        }
+        // Escalate
+        Matcher escalateMatcher = Pattern.compile(" ([0-9]+):Escal8").matcher(itemBody);
+        if (escalateMatcher.find()) {
+        	addContextMenuItem(menu, "Escalate", escalateMatcher.group(1), Pager.STATUS_NACK, itemId);
+        	pagerDuty = true;
+        }
+        // Not a PagerDuty message
+        if (!pagerDuty) {
+	        Cursor c = managedQuery(Replies.CONTENT_URI,  
+	                    new String[] {Replies._ID, Replies.NAME, Replies.BODY, Replies.ACK_STATUS},
+	                    "show_in_menu == 1", null, null);
+	        c.moveToFirst();
+	        while ( ! c.isAfterLast() ){
+	            MenuItem mi = addContextMenuItem(menu,
+	                             c.getString(c.getColumnIndex(Replies.NAME)),
+	                             c.getString(c.getColumnIndex(Replies.BODY)),
+	                             c.getInt(c.getColumnIndex(Replies.ACK_STATUS)),
+	                             getListAdapter().getItemId(((AdapterView.AdapterContextMenuInfo)menuInfo).position)
+	                             );
+	            c.moveToNext();
+	        }
+	        
+	        // Add the "Other" menu option.
+	        menu.add(MENU_ACTIONS_GROUP, Menu.NONE, Menu.NONE, R.string.other).setOnMenuItemClickListener(
+	            new MenuItem.OnMenuItemClickListener(){
+	                public boolean onMenuItemClick(MenuItem item){
+	                    Intent i = new Intent(Intent.ACTION_PICK, Replies.CONTENT_URI);
+	                    i.setType("vnd.android.cursor.item/reply");
+	                    long itemId = getListAdapter().getItemId(((AdapterView.AdapterContextMenuInfo)item.getMenuInfo()).position);
+	                    i.putExtra("page_uri", Uri.withAppendedPath(Pages.CONTENT_URI, ""+itemId).toString() );
+	                    startActivityForResult(i, REQUEST_PICK_REPLY);
+	                    return true;
+	                }
+	            }
+	        );
+        }
+        // END ADRAKE PAGERDUTY HAX
         // Add the "delete" option.
         menu.add(MENU_ACTIONS_GROUP, Menu.NONE, Menu.NONE, R.string.delete).setOnMenuItemClickListener(
             new MenuItem.OnMenuItemClickListener(){
