@@ -21,6 +21,9 @@
      them to be changed based on the locale and options. -->
 
 <resources>
+    <!-- Defaults -->
+    <string name="default_gcm_sender">100533447903</string>
+    <string name="default_gcm_url">https://pagepusher.appspot.com</string>
     <!-- window and activity names -->
     <string name="app_name">Klaxon</string>
     <string name="prefs_activity">Preferences</string>
@@ -49,8 +52,8 @@
     <string name="pref_alarmstream_summary">use the alarm volume, instead of the ringer volume</string>
     <string name="pref_smssettings">Sms Settings</string>
     <string name="pref_smssettings_summary">preferences for pages received by SMS</string>
-    <string name="pref_sms_sender">Sender</string>
-    <string name="pref_sms_sender_summary">substring match on sender phone number or email</string>
+    <string name="pref_sms_sender">Alert Trigger</string>
+    <string name="pref_sms_sender_summary">Messages containing this string will be treated as pages.</string>
     <string name="pref_sms_subject">Include Subject Line</string>
     <string name="pref_sms_subject_summary">include the subject line in parenthesis in reply.</string>
     <string name="pref_sms_servicecenter">Use Received Service Center</string>
@@ -59,6 +62,12 @@
     <string name="pref_sms_consumesms_summary">prevent the SMS from being delivered to other apps</string>
     <string name="pref_sms_send_dest">Send Destination</string>
     <string name="pref_sms_send_dest_summary">Some SMS gateways require that the destination address be specified</string>
+    <string name="pref_c2dmsettings">Push (C2DM) Settings</string>
+    <string name="pref_c2dmsettings_summary">preferences for pages received by C2DM</string>
+    <string name="pref_c2dm_sender">Sender</string>
+    <string name="pref_c2dm_sender_summary">sender account</string>
+    <string name="pref_c2dm_register_account">Registration account</string>
+    <string name="pref_c2dm_register_url">Registration URL</string>
     <string name="pref_editreplies">Edit Replies</string>
     <string name="pref_editreplies_summary">edit the text of quick responses</string>
     <string name="pref_notificationtime">Notification Interval</string>
@@ -71,6 +80,7 @@
     <string name="pref_changelog">Changelog</string>
     <string name="pref_changelog_summary">notable changes between releases</string>
     <string name="pref_version">Version</string>
+    <string name="pref_feedback">Send Feedback</string>
 
     <!-- Alert contents -->
     <string name="alert_no_subject">Subject not specified</string>

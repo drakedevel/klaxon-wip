@@ -21,8 +21,6 @@ import android.database.Cursor;
 import android.net.Uri;
 import android.provider.BaseColumns;
 
-import android.R.drawable;
-
 public final class Pager
 {
     public static final int[] statusIcons = {
@@ -133,6 +131,12 @@ public final class Pager
          * <P>Type: TEXT</P>
          */
         public static final String TRANSPORT = "transport";
+
+        /**
+         * Reply Uri - can be used to reply out-of-band to the sender.
+         * <P>Type: TEXT</P>
+         */
+        public static final String REPLY_URI = "reply_uri";
     }
 
     /**

@@ -19,35 +19,26 @@ package org.nerdcircus.android.klaxon;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import android.app.Activity;
 import android.app.AlertDialog;
-import android.app.AlarmManager;
 import android.app.Dialog;
 import android.app.ListActivity;
-import android.app.NotificationManager;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
-import android.content.res.Resources;
 import android.database.Cursor;
 import android.net.Uri;
 import android.os.Bundle;
-import android.os.PatternMatcher;
 import android.view.ContextMenu;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
-import android.widget.AdapterView.OnItemClickListener;
 import android.widget.AdapterView;
-import android.widget.ImageView;
 import android.widget.ListAdapter;
 import android.widget.ListView;
-import android.widget.SimpleCursorAdapter;
-import android.widget.TextView;
 import android.content.SharedPreferences;
-import android.content.SharedPreferences.Editor;
-import android.R.drawable;
-
+import android.preference.PreferenceManager;
+import org.nerdcircus.android.klaxon.GcmHelper;
+import org.nerdcircus.android.klaxon.ReplyMenuUtils;
 import org.nerdcircus.android.klaxon.Pager;
 import org.nerdcircus.android.klaxon.Pager.*;
 
@@ -56,6 +47,7 @@ import android.util.Log;
 public class KlaxonList extends ListActivity
 {
     private String TAG = "KlaxonList";
+    public static final String AUTH_PERMISSION_ACTION = "org.nerdcircus.android.klaxon.AUTH_PERMISSION";
 
     //menu constants.
     private int MENU_ACTIONS_GROUP = Menu.FIRST;
@@ -66,7 +58,6 @@ public class KlaxonList extends ListActivity
     private int REQUEST_PICK_REPLY = 1;
 
     private Cursor mCursor;
-
     protected Dialog onCreateDialog(int id){
         if(id == DIALOG_DELETE_ALL_CONFIRMATION){
             //Confirm deletion.
@@ -110,16 +101,19 @@ public class KlaxonList extends ListActivity
                                              mCursor);
         Log.d(TAG, "adapter created.");
         setListAdapter(adapter);
+
         Log.d(TAG, "oncreate done.");
         registerForContextMenu(getListView());
     }
-
 
     public void onResume(){
         super.onResume();
         //if they're active, cancel any alarms and notifications.
         Intent i = new Intent(Pager.SILENCE_ACTION);
         sendBroadcast(i);
+
+        GcmHelper.maybePromptForPassword(this);
+
     }
 
     public void onListItemClick(ListView parent, View v, int position, long id){
@@ -138,11 +132,15 @@ public class KlaxonList extends ListActivity
                     "show_in_menu == 1", null, null);
         c.moveToFirst();
         while ( ! c.isAfterLast() ){
-            addReplyMenuItem(menu,
-                             c.getString(c.getColumnIndex(Replies.NAME)),
-                             c.getString(c.getColumnIndex(Replies.BODY)),
-                             c.getInt(c.getColumnIndex(Replies.ACK_STATUS))
-                             );
+            ReplyMenuUtils.addMenuItem(
+                    this,
+                    menu,
+                    c.getString(c.getColumnIndex(Replies.NAME)),
+                    c.getString(c.getColumnIndex(Replies.BODY)),
+                    c.getInt(c.getColumnIndex(Replies.ACK_STATUS)),
+                    Uri.withAppendedPath(Pager.Pages.CONTENT_URI,
+                         c.getString(c.getColumnIndex(Replies._ID)))
+                    );
             c.moveToNext();
         }
         Intent i = new Intent(Intent.ACTION_PICK, Replies.CONTENT_URI);
@@ -208,50 +206,70 @@ public class KlaxonList extends ListActivity
         // Ack
         Matcher ackMatcher = Pattern.compile(" ([0-9]+):Ack").matcher(itemBody);
         if (ackMatcher.find()) {
-        	addContextMenuItem(menu, "Ack", ackMatcher.group(1), Pager.STATUS_ACK, itemId);
+            ReplyMenuUtils.addMenuItem(
+                this,
+                menu,
+                "Ack",
+                ackMatcher.group(1),
+                Pager.STATUS_ACK,
+                Uri.withAppendedPath(Pager.Pages.CONTENT_URI, ""+itemId));
         	pagerDuty = true;
         }
         // Resolve
         Matcher resolveMatcher = Pattern.compile(" ([0-9]+):Resolv").matcher(itemBody);
         if (resolveMatcher.find()) {
-        	addContextMenuItem(menu, "Resolve", resolveMatcher.group(1), Pager.STATUS_ACK, itemId);
+            ReplyMenuUtils.addMenuItem(
+                this,
+                menu,
+                "Resolve",
+                resolveMatcher.group(1),
+                Pager.STATUS_ACK,
+                Uri.withAppendedPath(Pager.Pages.CONTENT_URI, ""+itemId));
         	pagerDuty = true;
         }
         // Escalate
         Matcher escalateMatcher = Pattern.compile(" ([0-9]+):Escal8").matcher(itemBody);
         if (escalateMatcher.find()) {
-        	addContextMenuItem(menu, "Escalate", escalateMatcher.group(1), Pager.STATUS_NACK, itemId);
+            ReplyMenuUtils.addMenuItem(
+                this,
+                menu,
+                "Escalate",
+                escalateMatcher.group(1),
+                Pager.STATUS_NACK,
+                Uri.withAppendedPath(Pager.Pages.CONTENT_URI, ""+itemId));
         	pagerDuty = true;
         }
         // Not a PagerDuty message
         if (!pagerDuty) {
 	        Cursor c = managedQuery(Replies.CONTENT_URI,  
-	                    new String[] {Replies._ID, Replies.NAME, Replies.BODY, Replies.ACK_STATUS},
-	                    "show_in_menu == 1", null, null);
-	        c.moveToFirst();
-	        while ( ! c.isAfterLast() ){
-	            MenuItem mi = addContextMenuItem(menu,
-	                             c.getString(c.getColumnIndex(Replies.NAME)),
-	                             c.getString(c.getColumnIndex(Replies.BODY)),
-	                             c.getInt(c.getColumnIndex(Replies.ACK_STATUS)),
-	                             getListAdapter().getItemId(((AdapterView.AdapterContextMenuInfo)menuInfo).position)
-	                             );
-	            c.moveToNext();
-	        }
-	        
-	        // Add the "Other" menu option.
-	        menu.add(MENU_ACTIONS_GROUP, Menu.NONE, Menu.NONE, R.string.other).setOnMenuItemClickListener(
-	            new MenuItem.OnMenuItemClickListener(){
-	                public boolean onMenuItemClick(MenuItem item){
-	                    Intent i = new Intent(Intent.ACTION_PICK, Replies.CONTENT_URI);
-	                    i.setType("vnd.android.cursor.item/reply");
-	                    long itemId = getListAdapter().getItemId(((AdapterView.AdapterContextMenuInfo)item.getMenuInfo()).position);
-	                    i.putExtra("page_uri", Uri.withAppendedPath(Pages.CONTENT_URI, ""+itemId).toString() );
-	                    startActivityForResult(i, REQUEST_PICK_REPLY);
-	                    return true;
-	                }
-	            }
-	        );
+                        new String[] {Replies._ID, Replies.NAME, Replies.BODY, Replies.ACK_STATUS},
+                        "show_in_menu == 1", null, null);
+            c.moveToFirst();
+            while ( ! c.isAfterLast() ){
+                MenuItem mi = ReplyMenuUtils.addMenuItem(
+                        this,
+                        menu,
+                        c.getString(c.getColumnIndex(Replies.NAME)),
+                        c.getString(c.getColumnIndex(Replies.BODY)),
+                        c.getInt(c.getColumnIndex(Replies.ACK_STATUS)),
+                        Uri.withAppendedPath(Pager.Pages.CONTENT_URI,
+                                             ""+getListAdapter().getItemId(((AdapterView.AdapterContextMenuInfo)menuInfo).position))
+                        );
+                c.moveToNext();
+            }
+            // Add the "Other" menu option.
+            menu.add(MENU_ACTIONS_GROUP, Menu.NONE, Menu.NONE, R.string.other).setOnMenuItemClickListener(
+                new MenuItem.OnMenuItemClickListener(){
+                    public boolean onMenuItemClick(MenuItem item){
+                        Intent i = new Intent(Intent.ACTION_PICK, Replies.CONTENT_URI);
+                        i.setType("vnd.android.cursor.item/reply");
+                        long itemId = getListAdapter().getItemId(((AdapterView.AdapterContextMenuInfo)item.getMenuInfo()).position);
+                        i.putExtra("page_uri", Uri.withAppendedPath(Pages.CONTENT_URI, ""+itemId).toString() );
+                        startActivityForResult(i, REQUEST_PICK_REPLY);
+                        return true;
+                    }
+                }
+            );
         }
         // END ADRAKE PAGERDUTY HAX
         // Add the "delete" option.
@@ -289,43 +307,6 @@ public class KlaxonList extends ListActivity
         }
     }
 
-    private Menu addReplyMenuItem(Menu menu, String label, final String response, final int status){
-        //NOTE: these cannot be done with MenuItem.setIntent(), because those
-        //intents are called with Context.startActivity()
-        menu.add(MENU_ACTIONS_GROUP, Menu.NONE, Menu.NONE, label).setOnMenuItemClickListener(
-            new MenuItem.OnMenuItemClickListener(){
-                public boolean onMenuItemClick(MenuItem item){
-                    Intent i = new Intent(Pager.REPLY_ACTION);
-                    i.setData(Uri.withAppendedPath(Pages.CONTENT_URI, ""+getSelectedItemId()));
-                    i.putExtra("response", response);
-                    i.putExtra("new_ack_status", status);
-                    sendBroadcast(i);
-                    return true;
-                }
-            }
-        );
-        return menu;
-    }
-
-    private MenuItem addContextMenuItem(Menu menu, String label, final String response, final int status, final long itemId){
-        //NOTE: these cannot be done with MenuItem.setIntent(), because those
-        //intents are called with Context.startActivity()
-        MenuItem mi = menu.add(MENU_ACTIONS_GROUP, Menu.NONE, Menu.NONE, label);
-        mi.setOnMenuItemClickListener(
-            new MenuItem.OnMenuItemClickListener(){
-                public boolean onMenuItemClick(MenuItem item){
-                    Intent i = new Intent(Pager.REPLY_ACTION);
-                    i.setData(Uri.withAppendedPath(Pages.CONTENT_URI, ""+itemId));
-                    i.putExtra("response", response);
-                    i.putExtra("new_ack_status", status);
-                    sendBroadcast(i);
-                    return true;
-                }
-            }
-        );
-        return mi;
-    }
-
     /** Create default preferences..
      * this creates some basic default preference settings for responses, and
      * alert sounds
@@ -339,17 +320,7 @@ public class KlaxonList extends ListActivity
             //prefs.edit().putString("alert_sound", "content://media/internal/audio/media/2").commit();
         }
 
-        //preload some default responses
-        prefs = getSharedPreferences("responses", 0);
-        Editor e = prefs.edit();
-        if( prefs.getAll().isEmpty() ){
-            Log.d(TAG, "creating initial responses");
-            //FIXME: these should be taken from resources.
-            e.putString(this.getString(R.string.yes), this.getString(R.string.yes));
-            e.putString(this.getString(R.string.no), this.getString(R.string.no));
-            e.commit();
-        }
-
+        PreferenceManager.setDefaultValues(this, R.xml.preferences, false);
     }
 }
 

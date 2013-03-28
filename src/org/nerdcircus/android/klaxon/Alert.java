@@ -8,9 +8,16 @@ import org.nerdcircus.android.klaxon.Pager.Pages;
  */
 public class Alert {
     private ContentValues cv;
+    String DEFAULT_FROM = "Unknown Sender";
+    String DEFAULT_SUBJECT = "Subject not specified";
+    String DEFAULT_BODY = "Body not specified";
 
     public Alert(){
         cv = new ContentValues();
+        setFrom(DEFAULT_FROM);
+        setDisplayFrom(DEFAULT_FROM);
+        setSubject(DEFAULT_SUBJECT);
+        setBody(DEFAULT_BODY);
         if( ! cv.containsKey(Pages.ACK_STATUS))
             cv.put(Pages.ACK_STATUS, 0); //default to no response.
     }
@@ -18,6 +25,14 @@ public class Alert {
     //clone contentvalues, so we can start passing around Alerts instead.
     public Alert(ContentValues v){
         cv = v;
+    }
+
+    public Alert(String from, String subj, String body){
+        setFrom(from);
+        setDisplayFrom(from);
+        setSubject(subj);
+        setBody(body);
+        setTransport("sms");
     }
 
     // "raw" from address, for use in replying.
@@ -28,6 +43,10 @@ public class Alert {
         return cv.getAsString(Pages.SENDER);
     }
 
+    // Intended to be used with Intent.ACTION_SEND
+    public void setReplyUri(String uri){
+        cv.put(Pages.REPLY_URI, uri);
+    }
     // "DisplayName" analog - phone number, or email addr.
     public void setDisplayFrom(String from){
         cv.put(Pages.FROM_ADDR, from);

@@ -17,32 +17,21 @@
 package org.nerdcircus.android.klaxon;
 
 import android.app.Activity;
-import android.content.Context;
 import android.content.Intent;
 import android.database.Cursor;
-import android.graphics.Typeface;
+import android.graphics.drawable.Drawable;
 import android.net.Uri;
 import android.os.Bundle;
 import android.view.Menu;
 import android.view.MenuItem;
-import android.view.View;
-import android.widget.AdapterView;
 import android.widget.TextView;
-import android.widget.ImageView;
-import android.content.SharedPreferences;
-
 import org.nerdcircus.android.klaxon.Pager;
-import org.nerdcircus.android.klaxon.Pager.Pages;
 import org.nerdcircus.android.klaxon.Pager.Replies;
+import org.nerdcircus.android.klaxon.ReplyMenuUtils;
 
 import android.util.Log;
 
-import java.util.Iterator;
-import java.util.Map;
-import java.util.Arrays;
 import java.util.Date;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.text.SimpleDateFormat;
 
 public class PageViewer extends Activity
@@ -50,7 +39,6 @@ public class PageViewer extends Activity
     private String TAG = "PageViewer";
     private static int REQUEST_PICK_REPLY = 1;
 
-    private SharedPreferences mResponses;
 
     private Uri mContentURI;
     private Cursor mCursor;
@@ -58,22 +46,16 @@ public class PageViewer extends Activity
     private TextView mBodyView;
     private TextView mDateView;
     private TextView mSenderView;
-    private ImageView mIconView;
-
     @Override
     public void onCreate(Bundle icicle)
     {
         super.onCreate(icicle);
-        mResponses = getSharedPreferences("responses", 0);
 
         setContentView(R.layout.escview);
 
         mSubjectView = (TextView) findViewById(R.id.view_subject);
-        //mSubjectView.setTypeface(Typeface.defaultFromStyle(Typeface.BOLD));
-        //mSubjectView.setTextSize((float)(mSubjectView.getTextSize() * 1.25));
 
         mBodyView = (TextView) findViewById(R.id.view_body);
-        mIconView = (ImageView) findViewById(R.id.view_icon);
         mDateView = (TextView) findViewById(R.id.datestamp);
         mSenderView = (TextView) findViewById(R.id.sender);
 
@@ -96,8 +78,8 @@ public class PageViewer extends Activity
         mSenderView.setText("Sender: "+ mCursor.getString(mCursor.getColumnIndex(Pager.Pages.SENDER)));
 
         int status = mCursor.getInt(mCursor.getColumnIndex(Pager.Pages.ACK_STATUS));
-        mIconView.setImageResource(Pager.getStatusResId(status));
-
+        Drawable icon = getResources().getDrawable(Pager.getStatusResId(status));
+        mSubjectView.setCompoundDrawablesWithIntrinsicBounds(icon, null, null, null);
     }
 
     @Override
@@ -111,60 +93,62 @@ public class PageViewer extends Activity
         // Ack
         Matcher ackMatcher = Pattern.compile(" ([0-9]+):Ack").matcher(itemBody);
         if (ackMatcher.find()) {
-        	addReplyMenuItem(menu, "Ack", ackMatcher.group(1), Pager.STATUS_ACK);
+            ReplyMenuUtils.addMenuItem(
+                this,
+                menu,
+                "Ack",
+                ackMatcher.group(1),
+                Pager.STATUS_ACK,
+                mContentURI);
         	pagerDuty = true;
         }
         // Resolve
         Matcher resolveMatcher = Pattern.compile(" ([0-9]+):Resolv").matcher(itemBody);
         if (resolveMatcher.find()) {
-        	addReplyMenuItem(menu, "Resolve", resolveMatcher.group(1), Pager.STATUS_ACK);
+            ReplyMenuUtils.addMenuItem(
+                this,
+                menu,
+                "Resolve",
+                resolveMatcher.group(1),
+                Pager.STATUS_ACK,
+                mContentURI);
         	pagerDuty = true;
         }
         // Escalate
         Matcher escalateMatcher = Pattern.compile(" ([0-9]+):Escal8").matcher(itemBody);
         if (escalateMatcher.find()) {
-        	addReplyMenuItem(menu, "Escalate", escalateMatcher.group(1), Pager.STATUS_NACK);
+            ReplyMenuUtils.addMenuItem(
+                this,
+                menu,
+                "Escalate",
+                escalateMatcher.group(1),
+                Pager.STATUS_NACK,
+                mContentURI);
         	pagerDuty = true;
         }
         // Not a PagerDuty message
         if (!pagerDuty) {
 	        Cursor c = managedQuery(Replies.CONTENT_URI,  
-	                    new String[] {Replies._ID, Replies.NAME, Replies.BODY, Replies.ACK_STATUS},
-	                    "show_in_menu == 1", null, null);
-	        c.moveToFirst();
-	        while ( ! c.isAfterLast() ){
-	            addReplyMenuItem(menu,
-	                             c.getString(c.getColumnIndex(Replies.NAME)),
-	                             c.getString(c.getColumnIndex(Replies.BODY)),
-	                             c.getInt(c.getColumnIndex(Replies.ACK_STATUS))
-	                             );
-	            c.moveToNext();
-	        }
-	        menu.add(Menu.NONE, Menu.NONE, Menu.NONE, R.string.other);
+                        new String[] {Replies._ID, Replies.NAME, Replies.BODY, Replies.ACK_STATUS},
+                        "show_in_menu == 1", null, null);
+            c.moveToFirst();
+            while ( ! c.isAfterLast() ){
+                ReplyMenuUtils.addMenuItem(
+                    this,
+                    menu,
+                    c.getString(c.getColumnIndex(Replies.NAME)),
+                    c.getString(c.getColumnIndex(Replies.BODY)),
+                    c.getInt(c.getColumnIndex(Replies.ACK_STATUS)),
+                    mContentURI);
+                c.moveToNext();
+            }
+            menu.add(Menu.NONE, Menu.NONE, Menu.NONE, R.string.other);
         }
         // END ADRAKE PAGERDUTY HAX
         //make delete be last
-        MenuItem delete_item = menu.add(Menu.NONE, Menu.NONE, Menu.NONE, R.string.delete);
+        menu.add(Menu.NONE, Menu.NONE, Menu.NONE, R.string.delete);
 
         return true;
-    }
-
-    private Menu addReplyMenuItem(Menu menu, String label, final String response, final int status){
-        //NOTE: these cannot be done with MenuItem.setIntent(), because those
-        //intents are called with Context.startActivity()
-        menu.add(Menu.NONE, 0, 0, label).setOnMenuItemClickListener(
-            new MenuItem.OnMenuItemClickListener(){
-                public boolean onMenuItemClick(MenuItem item){
-                    Intent i = new Intent(Pager.REPLY_ACTION, mContentURI);
-                    i.putExtra("response", response);
-                    i.putExtra("new_ack_status", status);
-                    Log.d(TAG, "ack status for "+response+"should be: "+status);
-                    sendBroadcast(i);
-                    return true;
-                }
-            }
-        );
-        return menu;
     }
 
     @Override
