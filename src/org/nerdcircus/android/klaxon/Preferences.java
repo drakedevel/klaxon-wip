@@ -18,6 +18,7 @@ package org.nerdcircus.android.klaxon;
 
 import android.accounts.Account;
 import android.accounts.AccountManager;
+import android.app.Activity;
 import android.content.SharedPreferences;
 import android.content.SharedPreferences.OnSharedPreferenceChangeListener;
 import android.content.Intent;
@@ -45,9 +46,15 @@ import org.nerdcircus.android.klaxon.Changelog;
 import org.nerdcircus.android.klaxon.ReplyList;
 import org.nerdcircus.android.klaxon.GcmHelper;
 
+import com.google.android.gms.common.AccountPicker;
+
 public class Preferences extends PreferenceActivity implements OnSharedPreferenceChangeListener {
     
     final Handler mHandler = new Handler();
+    private final String TAG = "KlaxonPreferences";
+    private final int RC_ACCOUNTPICKER = 1;
+
+    private GcmHelper mHelper;
 
     // Create runnable for posting
     final Runnable mUpdateC2dmPrefs = new Runnable() {
@@ -56,9 +63,28 @@ public class Preferences extends PreferenceActivity implements OnSharedPreferenc
         }
     };
 
+    protected void onActivityResult(int requestCode, int resultCode, Intent data){
+      super.onActivityResult(requestCode, resultCode, data);
+      if(requestCode == RC_ACCOUNTPICKER){
+        if(resultCode == Activity.RESULT_OK){
+          String accountName = data.getStringExtra(AccountManager.KEY_ACCOUNT_NAME);
+          SharedPreferences.Editor ed =  PreferenceManager.getDefaultSharedPreferences(this).edit();
+          Log.d(TAG, "setting pref to " + accountName);
+          ed.putString("c2dm_register_account", accountName);
+          ed.commit();
+        } else if (resultCode == Activity.RESULT_CANCELED){
+          Log.d(TAG, "account picking cancelled.");
+          SharedPreferences.Editor ed =  PreferenceManager.getDefaultSharedPreferences(this).edit();
+          ed.putString("c2dm_register_account", "");
+        }
+      }
+    }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
+        mHelper = new GcmHelper(this);
         
         // Load the preferences from an XML resource
         addPreferencesFromResource(R.xml.preferences);
@@ -107,17 +133,15 @@ public class Preferences extends PreferenceActivity implements OnSharedPreferenc
             csp.setEnabled(false);
         }
 
-        ListPreference c2dm_accounts = (ListPreference) this.findPreference("c2dm_register_account");
-        Account[] accounts = AccountManager.get(getApplicationContext()).getAccountsByType("com.google");
-        Vector<CharSequence> accountNames = new Vector<CharSequence>();
-        for (Account account : accounts) {
-           accountNames.add(account.name);
-        }
-        CharSequence[] accountNamesArray = new CharSequence[accountNames.size()];
-        accountNames.toArray(accountNamesArray);
-        c2dm_accounts.setEntries(accountNamesArray);
-        c2dm_accounts.setEntryValues(accountNamesArray);
-
+        Preference accounts = this.findPreference("c2dm_register_account");
+        accounts.setOnPreferenceClickListener( new Preference.OnPreferenceClickListener() {
+          public boolean onPreferenceClick(Preference p){
+            Intent acctpicker = AccountPicker.newChooseAccountIntent(null, null, new String[]{"com.google"},
+                     false, null, null, null, null);
+            ((Activity)p.getContext()).startActivityForResult(acctpicker, RC_ACCOUNTPICKER);
+            return true;
+          }
+        });
         mHandler.post(mUpdateC2dmPrefs);
     }
 
@@ -144,56 +168,48 @@ public class Preferences extends PreferenceActivity implements OnSharedPreferenc
 
     @Override
     protected void onResume() {
-	super.onResume();
-	// Setup the initial values
-	// Set up a listener whenever a key changes            
-	getPreferenceScreen()
-		.getSharedPreferences()
-		.registerOnSharedPreferenceChangeListener(this);
+        super.onResume();
+        // Setup the initial values
+        // Set up a listener whenever a key changes            
+        getPreferenceScreen()
+          .getSharedPreferences()
+          .registerOnSharedPreferenceChangeListener(this);
     }
 
     public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, String key) {
-	if (key.equals("c2dm_token"))
-	    mHandler.post(mUpdateC2dmPrefs);
-    }
-
-
-    public void c2dmRegister(View v) {
-      Intent registrationIntent = new Intent("com.google.android.c2dm.intent.REGISTER");
-      registrationIntent.putExtra("app", PendingIntent.getBroadcast(this, 0, new Intent(), 0)); // boilerplate
-      SharedPreferences settings = PreferenceManager.getDefaultSharedPreferences(this);
-      String c2dmSender = settings.getString("c2dm_sender", "");
-      if (c2dmSender.equals("")) {
-	    CharSequence text = "Set sender email address first.";
-	    int duration = Toast.LENGTH_LONG;
-	    Toast toast = Toast.makeText(getApplicationContext(), text,
-			    duration);
-	    toast.show();
-	    return;
+      if (key.equals("c2dm_token"))
+        mHandler.post(mUpdateC2dmPrefs);
       }
-      registrationIntent.putExtra("sender", c2dmSender);
-      startService(registrationIntent);
+
+
+    // Performs the actual registration
+    public void c2dmRegister(View v) {
+        SharedPreferences settings = PreferenceManager.getDefaultSharedPreferences(this);
+        String c2dmSender = settings.getString("c2dm_sender", "");
+        if (c2dmSender.equals("")) {
+            CharSequence text = "Set sender id first.";
+            int duration = Toast.LENGTH_LONG;
+            Toast toast = Toast.makeText(getApplicationContext(), text, duration);
+            toast.show();
+            return;
+        }
+        mHelper.registerWithGcmAsync(c2dmSender);
     }
 
     public void c2dmUnregister(View v) {
-	Intent unregIntent = new Intent("com.google.android.c2dm.intent.UNREGISTER");
-	unregIntent.putExtra("app", PendingIntent.getBroadcast(this, 0, new Intent(), 0));
-	startService(unregIntent);
+        mHelper.unregisterWithGcmAsync();
     }
 
     public void c2dmSendToken(View v) {
-	final Intent emailIntent = new Intent(android.content.Intent.ACTION_SEND);
-      	
-	SharedPreferences settings = PreferenceManager.getDefaultSharedPreferences(this);
-      	String c2dmToken = settings.getString("c2dm_token", "");
-	Account[] accounts = AccountManager.get(this).getAccounts();
-	if (accounts.length > 0 && c2dmToken != "") {
-		emailIntent .setType("plain/text");
-		emailIntent .putExtra(android.content.Intent.EXTRA_EMAIL, new String[]{accounts[0].name});
-		emailIntent .putExtra(android.content.Intent.EXTRA_SUBJECT, "My C2DM token");
-		emailIntent .putExtra(android.content.Intent.EXTRA_TEXT, c2dmToken);
-		this.startActivity(Intent.createChooser(emailIntent, "Send mail..."));
-	}
+      final Intent emailIntent = new Intent(android.content.Intent.ACTION_SEND);
+      SharedPreferences settings = PreferenceManager.getDefaultSharedPreferences(this);
+      String c2dmToken = settings.getString("c2dm_token", "");
+      if (c2dmToken != "") {
+        emailIntent .setType("plain/text");
+        emailIntent .putExtra(android.content.Intent.EXTRA_SUBJECT, "My C2DM token");
+        emailIntent .putExtra(android.content.Intent.EXTRA_TEXT, c2dmToken);
+        this.startActivity(Intent.createChooser(emailIntent, "Send mail..."));
+      }
     }
 
     /** Fires the intent to send an email with some debugging info.
@@ -214,20 +230,18 @@ public class Preferences extends PreferenceActivity implements OnSharedPreferenc
                 context.getPackageName(), 0);
             version = info.versionName;
         }
-        catch(Exception e){};
+        catch(Exception e){}
         return version;
     }
     public static String getDebugMessageBody(Context context){
         //Put some useful debug data in here.
-        String body = "\n" + 
+        return "\n" +
             "** System Info:\n" + 
             "Android Version: " + Build.VERSION.RELEASE + "\n" + 
             "Device: " + Build.MODEL + "\n" + 
             "Build Info: " + Build.FINGERPRINT + "\n" + 
             "** App Info:\n" + 
             "App Version: " + getAppVersion(context) + "\n";
-
-        return body;
     }
 
 }
